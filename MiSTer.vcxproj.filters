@@ -133,6 +133,9 @@
     <ClCompile Include="joymapping.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="joymap_pad.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="lib\md5\md5.c">
       <Filter>Source Files\md5</Filter>
     </ClCompile>
@@ -152,9 +155,6 @@
       <Filter>Source Files\support</Filter>
     </ClCompile>
     <ClCompile Include="support\minimig\minimig_fdd.cpp">
-      <Filter>Source Files\support</Filter>
-    </ClCompile>
-    <ClCompile Include="support\sharpmz\sharpmz.cpp">
       <Filter>Source Files\support</Filter>
     </ClCompile>
     <ClCompile Include="support\snes\snes.cpp">
@@ -252,6 +252,12 @@
     </ClCompile>
     <ClCompile Include="hdmi_cec.cpp">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="support\minimig\ipffile.cpp">
+      <Filter>Source Files\support</Filter>
+    </ClCompile>
+    <ClCompile Include="support\minimig\scpfile.cpp">
+      <Filter>Source Files\support</Filter>
     </ClCompile>
     <ClCompile Include="support\minimig\akiko_cd32.cpp">
       <Filter>Source Files\support</Filter>
@@ -387,6 +393,12 @@
     <ClInclude Include="joymapping.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="joymap_pad.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="joymap_pads.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="lib\md5\md5.h">
       <Filter>Header Files\md5</Filter>
     </ClInclude>
@@ -421,9 +433,6 @@
       <Filter>Header Files\support</Filter>
     </ClInclude>
     <ClInclude Include="support\snes\snes.h">
-      <Filter>Header Files\support</Filter>
-    </ClInclude>
-    <ClInclude Include="support\sharpmz\sharpmz.h">
       <Filter>Header Files\support</Filter>
     </ClInclude>
     <ClInclude Include="support\megacd\megacd.h">

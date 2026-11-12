@@ -12,6 +12,10 @@
 #define CONFIG_AGA       16
 #define CONFIG_CDTV      32
 
+// the cartridge (memory bit 6) is the Action Replay (AR5.ROM, the DeMoN v2
+// build at $A80000), not HRTmon: the core's status bit 55
+#define MINIMIG_EXTCFG_AR 0x800000
+
 #define CONFIG_FLOPPY1X  0
 #define CONFIG_FLOPPY2X  1
 
@@ -38,6 +42,18 @@ typedef struct
 	unsigned char speed;
 	unsigned char drives;
 } mm_floppyTYPE;
+
+typedef struct
+{
+	unsigned char exDrives[4];	
+} mm_floppyexTYPE;
+
+enum mm_userportMode {
+	mmup_mp32pi = 0,
+	mmup_misterfloppy = 1,
+	mmup_snac1 = 2,
+	mmup_snac2 = 3
+};
 
 typedef struct
 {
@@ -68,6 +84,10 @@ typedef struct
 	mm_hardfileTYPE cd32_drive;
 	mm_hardfileTYPE cdtv_drive;
 	uint8_t         a2065_mode;
+
+	mm_userportMode userport;
+	mm_floppyexTYPE externalfloppy;
+	unsigned char   snac_autofire;
 } mm_configTYPE;
 
 extern mm_configTYPE minimig_config;
@@ -94,10 +114,15 @@ void minimig_ConfigMemory(unsigned char memory);
 void minimig_ConfigCPU(unsigned char cpu);
 void minimig_ConfigChipset(mm_configTYPE *config);
 void minimig_ConfigFloppy(unsigned char drives, unsigned char speed);
+void minimig_ConfigFloppyExt(unsigned char drive0, unsigned char drive1, unsigned char drive2, unsigned char drive3);
 void minimig_ConfigAutofire(unsigned char autofire, unsigned char mask);
+void minimig_ConfigUserPort(mm_userportMode mode);
 
 void minimig_set_extcfg(unsigned int ext_cfg);
 unsigned int minimig_get_extcfg();
+unsigned int minimig_core_extcfg();
+void minimig_dsnd_load();
+int minimig_dsnd_loaded();
 
 // slot: 0 = cd32_drive, 1 = cdtv_drive
 int minimig_cd_drive_open(int slot, const char *filename);

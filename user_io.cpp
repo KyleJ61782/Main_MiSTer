@@ -104,14 +104,14 @@ uint32_t user_io_get_activity_seq()
 	return input_seq;
 }
 
-void user_io_store_filename(char *filename)
+void user_io_store_filename(const char *filename)
 {
-	char *p = strrchr(filename, '/');
+	const char *p = strrchr(filename, '/');
 	if (p) strcpy(last_filename, p + 1);
 	else strcpy(last_filename, filename);
 
-	p = strrchr(last_filename, '.');
-	if (p) *p = 0;
+	char *dot = strrchr(last_filename, '.');
+	if (dot) *dot = 0;
 }
 
 const char *get_image_name(int i)
@@ -262,6 +262,14 @@ char is_snes()
 	return (is_snes_type == 1);
 }
 
+// True if the running core is the Apple //e (confstr name "Apple-II").
+static int is_apple2_type = 0;
+char is_apple2()
+{
+	if (!is_apple2_type) is_apple2_type = strcasecmp(orig_name, "Apple-II") ? 2 : 1;
+	return (is_apple2_type == 1);
+}
+
 static int is_sgb_type = 0;
 char is_sgb()
 {
@@ -292,6 +300,24 @@ char is_neogeo()
 
 char is_neogeo_cd() {
     return is_neogeo() && neocd_is_en();
+}
+
+// NeXTcube ("NeXT") & NeXTstation Turbo ("NeXT-Color") share HPS-side services
+char is_next()
+{
+	return !strcasecmp(orig_name, "NeXT") || !strcasecmp(orig_name, "NeXT-Color");
+}
+
+// Guests that read the battery clock as UTC and apply their own time zone
+// (UNIX systems); every other guest gets the timestamp in local time.
+static char rtc_is_utc()
+{
+	return is_next() || is_hp9k_family();
+}
+
+char is_falcon()
+{
+	return !strcasecmp(orig_name, "Falcon");
 }
 
 static int is_minimig_type = 0;
@@ -347,6 +373,19 @@ char is_pcxt()
 			is_pcxt_type = 2;
 	}
 	return (is_pcxt_type == 1);
+}
+
+static int is_pcat286_type = 0;
+char is_pcat286()
+{
+	if (!is_pcat286_type)
+	{
+		if (!strcasecmp(orig_name, "PCAT-286"))
+			is_pcat286_type = 1;
+		else
+			is_pcat286_type = 2;
+	}
+	return (is_pcat286_type == 1);
 }
 
 static int is_gba_type = 0;
@@ -405,16 +444,32 @@ char is_st()
 	return (is_st_type == 1);
 }
 
-char is_sharpmz()
-{
-	return(core_type == CORE_TYPE_SHARPMZ);
-}
-
 static int is_electron_type = 0;
 char is_electron()
 {
 	if (!is_electron_type) is_electron_type = strcasecmp(orig_name, "AcornElectron") ? 2 : 1;
 	return (is_electron_type == 1);
+}
+
+static int is_marty_type = 0;
+char is_marty()
+{
+	if (!is_marty_type) is_marty_type = strcasecmp(orig_name, "Marty") ? 2 : 1;
+	return (is_marty_type == 1);
+}
+
+static int is_videobrain_type = 0;
+char is_videobrain()
+{
+	if (!is_videobrain_type) is_videobrain_type = strcasecmp(orig_name, "VideoBrain") ? 2 : 1;
+	return (is_videobrain_type == 1);
+}
+
+static int is_pcfx_type = 0;
+char is_pcfx()
+{
+	if (!is_pcfx_type) is_pcfx_type = strcasecmp(orig_name, "PCFX") ? 2 : 1;
+	return (is_pcfx_type == 1);
 }
 
 static int is_saturn_type = 0;
@@ -461,6 +516,7 @@ void user_io_read_core_name()
 	is_x86_type  = 0;
 	is_no_type   = 0;
 	is_snes_type = 0;
+	is_apple2_type = 0;
 	is_sgb_type = 0;
 	is_cpc_type = 0;
 	is_zx81_type = 0;
@@ -481,6 +537,9 @@ void user_io_read_core_name()
 	is_pcxt_type = 0;
 	is_electron_type = 0;
 	is_saturn_type = 0;
+	is_marty_type = 0;
+	is_videobrain_type = 0;
+	is_pcfx_type = 0;
 	is_n64_type = 0;
 	is_uneon_type = 0;
 	core_name[0] = 0;
@@ -609,8 +668,9 @@ void user_io_status_set(const char *opt, uint32_t value, int ex)
 
 	if (!is_st())
 	{
+		uint32_t ext = minimig_core_extcfg();
 		spi_uio_cmd_cont(UIO_SET_STATUS2);
-		for (uint32_t i = 0; i < sizeof(cur_status); i += 2) spi_w((cur_status[i + 1] << 8) | cur_status[i]);
+		for (uint32_t i = 0; i < sizeof(cur_status); i += 2) spi_w((is_minimig() && (i >> 2) == 1) ? (uint16_t)(ext >> ((i & 2) << 3)) : (cur_status[i + 1] << 8) | cur_status[i]);
 		DisableIO();
 	}
 }
@@ -1001,7 +1061,7 @@ static void parse_config()
 				{
 					int idx = p[2] - '0';
 					StoreIdx_S(idx, str);
-					if (is_x86() || is_pcxt() || (is_uneon() && idx >= 2))
+					if (is_x86() || is_pcxt() || is_pcat286() || (is_uneon() && idx >= 2))
 					{
 						x86_set_image(idx, str);
 					}
@@ -1015,6 +1075,14 @@ static void parse_config()
 						pcecd_set_image(idx, str);
 						game_docs_init(str, 0);
 						cheats_init(str, 0);
+					}
+					else if (is_marty())
+					{
+						marty_set_image(idx, str);
+					}
+					else if (is_pcfx())
+					{
+						pcfx_set_image(idx, str);
 					}
 					else
 					{
@@ -1129,7 +1197,20 @@ static void send_rtc(int type)
 
 	if (type & 2)
 	{
-		t += t - mktime(gmtime(&t));
+		if (!rtc_is_utc())
+		{
+			if (is_mac_scsi_family())
+			{
+				struct tm tm_utc;
+				gmtime_r(&t, &tm_utc);
+				tm_utc.tm_isdst = -1;
+				t += t - mktime(&tm_utc);
+			}
+			else
+			{
+				t += t - mktime(gmtime(&t));
+			}
+		}
 
 		spi_uio_cmd_cont(UIO_TIMESTAMP);
 		spi_w(t);
@@ -1177,7 +1258,7 @@ void MakeFile(const char *filename, const char *data)
 uint16_t f12_mod;
 char is_f12_mod_needed()
 {
-	return (is_x86() || is_pcxt() || is_archie() || (f12_mod != 0));
+	return (is_x86() || is_pcxt() || is_pcat286() || is_archie() || (f12_mod != 0));
 }
 
 int GetUARTMode()
@@ -1436,6 +1517,14 @@ void user_io_init(const char *path, const char *xml)
 	// core switch; pdp2011_xu_poll() (below) starts it again for PDP2011.
 	pdp2011_xu_stop();
 
+	// Same for the NeXT ethernet bridge.
+	next_enet_stop();
+	sun_enet_stop();
+	b3_eth_stop();
+	hp9k_enet_stop();
+	ibmrs6k_enet_stop();
+	sgi_enet_stop();
+
 	// we need to set the directory to where the XML file (MRA) is
 	// not the RBF. The RBF will be in arcade, which the user shouldn't
 	// browse
@@ -1455,8 +1544,7 @@ void user_io_init(const char *path, const char *xml)
 		core_type = CORE_TYPE_8BIT;
 	}
 
-	if ((core_type != CORE_TYPE_8BIT) &&
-		(core_type != CORE_TYPE_SHARPMZ))
+	if (core_type != CORE_TYPE_8BIT)
 	{
 		core_type = CORE_TYPE_UNKNOWN;
 		fio_size = 0;
@@ -1478,10 +1566,6 @@ void user_io_init(const char *path, const char *xml)
 
 		// send a reset
 		user_io_status_set("[0]", 1);
-	}
-	else if (core_type == CORE_TYPE_SHARPMZ)
-	{
-		user_io_set_core_name("sharpmz");
 	}
 
 	user_io_read_confstr();
@@ -1540,19 +1624,12 @@ void user_io_init(const char *path, const char *xml)
 	load_volume();
 
 	user_io_send_buttons(1);
-	if (xml && isXmlName(xml) == 2) mgl_parse(xml);
+	if (xml && isXmlName(xml)) mgl_parse(xml);
 
 	switch (core_type)
 	{
 	case CORE_TYPE_UNKNOWN:
 		printf("Unable to identify core (%x)!\n", core_type);
-		break;
-
-	case CORE_TYPE_SHARPMZ:
-		printf("Identified Sharp MZ Series core");
-		user_io_set_core_name("sharpmz");
-		sharpmz_init();
-		parse_buttons();
 		break;
 
 	case CORE_TYPE_8BIT:
@@ -1564,7 +1641,8 @@ void user_io_init(const char *path, const char *xml)
 			{
 				printf("Loading config %s\n", name);
 				memset(cur_status, 0, sizeof(cur_status));
-				if (FileLoadConfig(name, cur_status, sizeof(cur_status)))
+				int config_found = FileLoadConfig(name, cur_status, sizeof(cur_status));
+				if (config_found)
 				{
 					printf("Found config:\n");
 					hexdump(cur_status, sizeof(cur_status));
@@ -1574,6 +1652,7 @@ void user_io_init(const char *path, const char *xml)
 					memset(cur_status, 0, sizeof(cur_status));
 				}
 
+				if (xml && isXmlName(xml) == 2) mgl_apply_options(config_found);
 				user_io_status_set("[0]", 1);
 			}
 
@@ -1591,6 +1670,18 @@ void user_io_init(const char *path, const char *xml)
 			}
 			else
 			{
+				// The ethernet bridge is an addition to the NeXT core, not
+				// a replacement for its start-up: arming it must not claim
+				// a branch of the chain below, or the core skips the boot
+				// ROM load at its end and comes up with no ROM at all.
+				if (is_next()) next_enet_start();
+				// before the boot ROMs: the Sun-2's ID PROM goes in while it is held in reset
+				if (is_sun_family()) sun_enet_start();
+				if (is_hp9k_family()) hp9k_enet_start();
+				if (is_3b1()) b3_eth_start();
+				if (is_ibmrs6k()) ibmrs6k_enet_start();
+				if (is_sgi_family()) sgi_enet_start();
+
 				if (xml && isXmlName(xml) == 1)
 				{
 					arcade_send_rom(xml);
@@ -1602,10 +1693,10 @@ void user_io_init(const char *path, const char *xml)
 					BootInit();
 					a2065_start();
 				}
-				else if (is_x86() || is_pcxt())
+				else if (is_x86() || is_pcxt() || is_pcat286())
 				{
 					x86_config_load();
-					x86_init();
+					x86_init(1);
 				}
 				else if (is_archie())
 				{
@@ -1626,6 +1717,9 @@ void user_io_init(const char *path, const char *xml)
 
 					if (is_uneon()) x86_ide_set();
 					if (is_cdi()) cdi_load_root_nvram();
+					if (is_marty()) marty_init();
+					if (is_videobrain()) videobrain_init();
+					if (is_pcfx()) pcfx_init();
 
 					if (!strlen(path) || !user_io_file_tx(path, 0, 0, 0, 1))
 					{
@@ -1723,6 +1817,8 @@ void user_io_init(const char *path, const char *xml)
 		}
 
 		send_rtc(3);
+		if (is_marty() && xml && isXmlName(xml) == 2) marty_mgl_premount();
+		if (is_pcfx() && xml && isXmlName(xml) == 2) pcfx_mgl_premount();
 
 		// release reset
 		if (!is_minimig() && !is_st()) user_io_status_set("[0]", 0);
@@ -1736,8 +1832,6 @@ void user_io_init(const char *path, const char *xml)
 		}
 		break;
 	}
-
-	OsdRotation((cfg.osd_rotate == 1) ? 3 : (cfg.osd_rotate == 2) ? 1 : 0);
 
 	uart_mode = spi_uio_cmd16(UIO_GETUARTFLG, 0) || uart_speeds[0];
 	uint32_t mode = 0;
@@ -1780,7 +1874,7 @@ void user_io_init(const char *path, const char *xml)
 
 	f12_mod = spi_uio_cmd(UIO_GET_F12_MOD);
 
-	if (!mgl_get()->count || is_menu() || is_st() || is_archie() || user_io_core_type() == CORE_TYPE_SHARPMZ)
+	if (!mgl_get()->count || is_menu() || is_archie())
 	{
 		mgl_get()->done = 1;
 	}
@@ -1794,6 +1888,7 @@ static int joyswap = 0;
 void user_io_set_joyswap(int swap)
 {
 	joyswap = swap;
+	input_analog_triggers_resync(osd_is_visible);
 }
 
 int user_io_get_joyswap()
@@ -1831,6 +1926,21 @@ void user_io_r_analog_joystick(unsigned char joystick, char valueX, char valueY)
 			spi8(valueX);
 			spi8(valueY);
 		}
+		DisableIO();
+	}
+}
+
+void user_io_analog_triggers(unsigned char joystick, uint8_t l2, uint8_t r2)
+{
+	static uint8_t sent[NUMPLAYERS][2] = {};
+	uint8_t joy = (joystick > 1 || !joyswap) ? joystick : joystick ^ 1;
+
+	if (core_type == CORE_TYPE_8BIT && joy < NUMPLAYERS && (sent[joy][0] != l2 || sent[joy][1] != r2))
+	{
+		sent[joy][0] = l2;
+		sent[joy][1] = r2;
+		spi_uio_cmd8_cont(UIO_ATRIG, joy);
+		spi_w((r2 << 8) | l2);
 		DisableIO();
 	}
 }
@@ -1969,6 +2079,32 @@ int process_ss(const char *rom_name, int enable)
 		uint32_t map_addr = ss_base;
 		fileTYPE f = {};
 
+		// Apple-II: per-game savestates, keyed by the game disk.
+		const char *ss_media = rom_name;
+		if (is_apple2())
+		{
+			static char a2_ss_core[64];
+			snprintf(a2_ss_core, sizeof(a2_ss_core), "%s.", user_io_get_core_name());
+			ss_media = a2_ss_core;
+			static const int a2_ss_slot[3] = {0, 2, 1};
+			for (int p = 0; p < 3; p++)
+			{
+				if (sd_image[a2_ss_slot[p]].size)
+				{
+					// use .name (basename) as it is updated on every open
+					const char *q = sd_image[a2_ss_slot[p]].name;
+					const char *slash = strrchr(q, '/');
+					const char *base = slash ? slash + 1 : q;
+					// media name must have a dot or the handler may crash
+					if (strchr(base, '.'))
+					{
+						ss_media = base;
+						break;
+					}
+				}
+			}
+		}
+
 		for (int i = 0; i < 4; i++)
 		{
 			if (!base[i]) base[i] = shmem_map(map_addr, len);
@@ -1983,13 +2119,13 @@ int process_ss(const char *rom_name, int enable)
 
 				if (!i)
 				{
-					FileGenerateSavestatePath(rom_name, ss_name, 1);
+					FileGenerateSavestatePath(ss_media, ss_name, 1);
 					printf("Base SavestatePath=%s\n", ss_name);
-					if (!FileExists(ss_name)) FileGenerateSavestatePath(rom_name, ss_name, 0);
+					if (!FileExists(ss_name)) FileGenerateSavestatePath(ss_media, ss_name, 0);
 				}
 				else
 				{
-					FileGenerateSavestatePath(rom_name, ss_name, i + 1);
+					FileGenerateSavestatePath(ss_media, ss_name, i + 1);
 				}
 
 				if (FileExists(ss_name))
@@ -2011,7 +2147,7 @@ int process_ss(const char *rom_name, int enable)
 			map_addr += len;
 		}
 
-		FileGenerateSavestatePath(rom_name, ss_name, 1);
+		FileGenerateSavestatePath(ss_media, ss_name, 1);
 		ss_sufx = ss_name + strlen(ss_name) - 4;
 		return 1;
 	}
@@ -2022,7 +2158,6 @@ int process_ss(const char *rom_name, int enable)
 	if (ss_timer && !CheckTimer(ss_timer)) return 0;
 	ss_timer = GetTimer(1000);
 
-	fileTYPE f = {};
 	for (int i = 0; i < 4; i++)
 	{
 		if (base[i])
@@ -2040,16 +2175,8 @@ int process_ss(const char *rom_name, int enable)
 					Info("Saving the state", 500);
 
 					*ss_sufx = i + '1';
-					if (FileOpenEx(&f, ss_name, O_CREAT | O_TRUNC | O_RDWR | O_SYNC))
-					{
-						int ret = FileWriteAdv(&f, base[i], size);
-						FileClose(&f);
-						printf("Wrote %d bytes to file: %s\n", ret, ss_name);
-					}
-					else
-					{
-						printf("Unable to create file: %s\n", ss_name);
-					}
+					int ret = FileSave(ss_name, base[i], size);
+					if (ret) printf("Wrote %d bytes to file: %s\n", ret, ss_name);
 				}
 			}
 		}
@@ -2147,7 +2274,7 @@ static void pdp2011_send_units()
 	printf("PDP2011 units: RL present %x ro %x; RK present %02x ro %02x\n", rlp & 0xF, rlr & 0xF, rkp, rkr);
 }
 
-int user_io_file_mount(const char *name, unsigned char index, char pre, int pre_size)
+int user_io_file_mount(const char *name, unsigned char index, char pre, int pre_size, int image)
 {
 	int writable = 0;
 	int ret = 0;
@@ -2157,6 +2284,7 @@ int user_io_file_mount(const char *name, unsigned char index, char pre, int pre_
 	sd_image_cangrow[index] = (pre != 0);
 	sd_type[index] = SD_TYPE_DEFAULT ;
 	pdp2011_tape_detach(index);   // any mount or unmount ends a PDP2011 tape stream
+	st_fdd_unmount(index);
 	if (len)
 	{
 		if (!ret)
@@ -2235,7 +2363,10 @@ int user_io_file_mount(const char *name, unsigned char index, char pre, int pre_
 					const char *core_name = user_io_get_core_name();
 					const char *orig_core_name = user_io_get_core_name(1);
 					const unsigned char ext_idx = last_file_ext_idx;
-					const bool a2_core = !strcasecmp(core_name, "apple-ii") || !strcasecmp(core_name, "TK2000");
+					// The Apple //e core now takes WOZ only (its floppies go through iigs_mount
+					// below, like the IIgs); only TK2000 still uses the on-the-fly nibblizer.
+					const bool a2_core = !strcasecmp(core_name, "TK2000") ||
+						(!strcasecmp(core_name, "apple-ii") && !user_io_a2_woz_enabled());
 					const bool oric_core =
 						!strcasecmp(core_name, "Oric") ||
 						!strcasecmp(core_name, "Pravetz 8D") ||
@@ -2244,6 +2375,10 @@ int user_io_file_mount(const char *name, unsigned char index, char pre, int pre_
 					const bool oric_a2_slot = oric_core && index < 2 && (ext_idx == 1 || ext_idx == 2);
 					const bool dsk_ext = !strcasecmp(name + len - 4, ".dsk");
 					const bool do_ext = len > 3 && !strcasecmp(name + len - 3, ".do");
+					// .po only on the floppy slots: the Apple-II core also mounts .po as a hard disk.
+					const bool po_ext = index < 2 && len > 3 && !strcasecmp(name + len - 3, ".po");
+					// A .dsk/.do/.po that is really a 35-track NIB is passed through as-is.
+					const bool nib_sized = sd_image[index].size == A2NIB_IMAGE_SIZE;
 					if (!strcasecmp(name + len - 4, ".d64")
 						|| !strcasecmp(name + len - 4, ".g64")
 						|| !strcasecmp(name + len - 4, ".d71")
@@ -2258,10 +2393,11 @@ int user_io_file_mount(const char *name, unsigned char index, char pre, int pre_
 					{
 						img_type = G64_SUPPORT_HD | G64_SUPPORT_DS;
 					}
-					else if ((dsk_ext && (a2_core || oric_a2_slot)) || (do_ext && oric_a2_slot))
+					else if (!nib_sized && (((dsk_ext || do_ext || po_ext) && a2_core) || ((dsk_ext || do_ext) && oric_a2_slot)))
 					{
-						printf("FOUND A2 DSK/DO type\n");
+						printf("FOUND A2 %s type (nibblized on the fly)\n", po_ext ? "PO" : "DSK/DO");
 						sd_type[index] = SD_TYPE_A2;
+						a2_set_image(index, po_ext);
 					}
 				}
 
@@ -2284,6 +2420,18 @@ int user_io_file_mount(const char *name, unsigned char index, char pre, int pre_
 
 				// Mac CD slot: CUE/CHD/raw image translation (support/mac)
 				if (ret) ret = mac_mount_hook(index, name, &sd_image[index], &writable);
+				// Sun CD slot: CUE/CHD/raw image translation (support/sun)
+				if (ret) ret = sun_mount_hook(index, name, &sd_image[index], &writable);
+				if (ret) ret = hp9k_mount_hook(index, name, &sd_image[index], &writable);
+				if (ret) ret = ibmrs6k_mount_hook(index, name, &sd_image[index], &writable);
+				if (ret) ret = sgi_mount_hook(index, name, &sd_image[index], &writable);
+				if (ret) ret = next_mount_hook(index, name, &sd_image[index], &writable);
+				if (ret) ret = a3_mount_hook(index, name, &sd_image[index], &writable);
+
+				// Falcon SCSI slots: image registration, CD cue/bin translation (support/falcon)
+				if (ret) ret = falcon_scsi_mount_hook(index, name, &sd_image[index], &writable);
+
+				if (ret) ret = st_fdd_mount_hook(index, name, &sd_image[index], &writable);
 
 				if (ret && is_c128())
 				{
@@ -2303,9 +2451,22 @@ int user_io_file_mount(const char *name, unsigned char index, char pre, int pre_
 		FileClose(&sd_image[index]);
 		c64_closeGCR(index);
 		mac_cdrom_unmount(index);
+		sun_unmount(index);
+		hp9k_unmount(index);
+		ibmrs6k_unmount(index);
+		sgi_unmount(index);
+		next_unmount(index);
+		a3_unmount(index);
+		falcon_scsi_unmount(index);
+		st_fdd_unmount(index);
 	}
 
 	buffer_lba[index] = -1;
+	if (!pc88_mount(index, ret ? &sd_image[index] : NULL, name, image, &writable))
+	{
+		FileClose(&sd_image[index]);
+		ret = 0;
+	}
 	if (!index || is_cdi() || (is_saturn() && index==1)) use_save = pre;
 
 	if (!ret)
@@ -2324,6 +2485,14 @@ int user_io_file_mount(const char *name, unsigned char index, char pre, int pre_
 	}
 	else
 	{
+		if (is_apple2())
+		{
+			if (ss_base)
+			{
+				process_ss(name); // mount .ss file to persist savestates on SD card
+			}
+			user_io_store_filename(name); // name screenshots after the loaded disk
+		}
 		printf("Mount %s as %s on %d slot\n", name, writable ? "read-write" : "read-only", index);
 	}
 
@@ -2333,8 +2502,9 @@ int user_io_file_mount(const char *name, unsigned char index, char pre, int pre_
 	EnableIO();
 	spi8(UIO_SET_SDINFO);
 
-	__off64_t size = sd_image[index].size;
+	__off64_t size = pc88_size(index, sd_image[index].size);
 	if (is_pdp2011() && ret && index <= 2) size = pdp2011_disk_report_size(index, &sd_image[index]);   // the chosen drive's size
+	if (ret) size = (__off64_t)st_fdd_size(index, (uint64_t)size);
 	if (!ret && pre)
 	{
 		sd_image[index].type = 2;
@@ -3063,6 +3233,49 @@ void user_io_read_confstr()
 	DisableIO();
 }
 
+
+// Number of ;-separated fields in the confstr (0 if empty).
+static int user_io_confstr_field_count()
+{
+	int c = 0;
+	for (int i = 0; cfgstr[i]; i++)
+		if (cfgstr[i] == ';') c++;
+	return c + 1;
+}
+
+// Build date (YYMM) from the confstr V field ("V,v<YYMMDD>")
+static int user_io_confstr_yymm()
+{
+	const char *p = cfgstr;
+	while (*p)
+	{
+		// fields are ;-separated; the type char is the field's first byte
+		if (p[0] == 'V' && p[1] == ',' && p[2] == 'v' &&
+		    p[3] >= '0' && p[3] <= '9' && p[4] >= '0' && p[4] <= '9' &&
+		    p[5] >= '0' && p[5] <= '9' && p[6] >= '0' && p[6] <= '9')
+		{
+			return (p[3]-'0')*1000 + (p[4]-'0')*100 + (p[5]-'0')*10 + (p[6]-'0');
+		}
+		p = strchr(p, ';');
+		if (!p) break;
+		p++;
+	}
+	return 0;
+}
+
+// Apple-II backward compatibility - allow using older builds of the core
+// checks number of fields (must be much more than existing cores)
+// and build date must be in the past
+#define A2_WOZ_MIN_FIELDS 50
+#define A2_WOZ_MIN_DATE 2607
+char user_io_a2_woz_enabled()
+{
+	const char *n = user_io_get_core_name();
+	return n && !strcasecmp(n, "Apple-II") &&
+		user_io_confstr_field_count() > A2_WOZ_MIN_FIELDS &&
+		user_io_confstr_yymm() >= A2_WOZ_MIN_DATE;
+}
+
 char *user_io_get_confstr(int index)
 {
 	int lidx = 0;
@@ -3133,8 +3346,8 @@ void user_io_send_buttons(char force)
 	if (cfg.dvi_mode == 1) map |= CONF_DVI;
 	if (cfg.hdmi_limited & 1) map |= CONF_HDMI_LIMITED1;
 	if (cfg.hdmi_limited & 2) map |= CONF_HDMI_LIMITED2;
-	if (cfg.direct_video) map |= CONF_DIRECT_VIDEO;
-	if (cfg.direct_video == 2) map |= CONF_DIRECT_VIDEO2;
+	if (video_is_direct()) map |= CONF_DIRECT_VIDEO;
+	if (video_is_direct() && cfg.direct_video == 2) map |= CONF_DIRECT_VIDEO2;
 	if (vga_fb) map |= CONF_VGA_FB;
 
 	if ((map != key_map) || force)
@@ -3157,7 +3370,7 @@ void user_io_send_buttons(char force)
 			if (is_neogeo_cd()) neocd_reset();
 			if (is_pce()) pcecd_reset();
 			if (is_saturn()) saturn_reset();
-			if (is_x86() || is_pcxt()) x86_init();
+			if (is_x86() || is_pcxt() || is_pcat286()) x86_init();
 			if (is_uneon()) x86_ide_set();
 			if (is_st()) tos_reset(0);
 			if (is_3do()) p3do_reset();
@@ -3223,6 +3436,7 @@ static void mouse_reply(char code)
 
 static uint8_t use_ps2ctl = 0;
 static unsigned long rtc_timer = 0;
+static unsigned long next_rtc_timer = 0;
 
 void user_io_rtc_reset()
 {
@@ -3244,8 +3458,7 @@ void user_io_poll()
 	// is being updated and getting a corrupted image.
 	add_frame_callback(screenshot_cb);
 
-	if ((core_type != CORE_TYPE_SHARPMZ) &&
-		(core_type != CORE_TYPE_8BIT))
+	if (core_type != CORE_TYPE_8BIT)
 	{
 		return;  // no user io for the installed core
 	}
@@ -3253,6 +3466,10 @@ void user_io_poll()
 	user_io_send_buttons(0);
 
 	mac_poll();   // Mac SCSI family: Toolbox slot announce + deferred CD work
+	sun_poll();   // Sun SCSI family: write-buffer flushes
+	hp9k_poll();
+	ibmrs6k_poll();
+	sgi_poll();
 
 	if (is_minimig())
 	{
@@ -3297,6 +3514,24 @@ void user_io_poll()
 	// XU (DEUNA) host networking; pdp2011_xu_stop() runs from user_io_init()
 	// on every core switch, so gating the poll here loses no cleanup.
 	if (is_pdp2011()) pdp2011_xu_poll();
+	next_enet_poll();
+	iigs_uthernet2_poll();
+	sun_enet_poll();
+	hp9k_enet_poll();
+	b3_eth_poll();
+	ibmrs6k_enet_poll();
+	sgi_enet_poll();
+
+	// The NeXT keeps a battery backed clock that the guest reads at
+	// boot; the one-shot update at core load is not enough if the core
+	// sits at the ROM monitor for a while, so refresh it every minute
+	// like the other cores that own a real time clock.  The core stops
+	// applying these once the guest sets its own time.
+	if (is_next() && (!next_rtc_timer || CheckTimer(next_rtc_timer)))
+	{
+		next_rtc_timer = GetTimer(60000);
+		send_rtc(1);
+	}
 
 	if (core_type == CORE_TYPE_8BIT && !is_menu())
 	{
@@ -3310,7 +3545,7 @@ void user_io_poll()
 	pdp2011_tu58_poll(is_pdp2011());
 
 	// sd card emulation
-	if (is_x86() || is_pcxt())
+	if (is_x86() || is_pcxt() || is_pcat286())
 	{
 		x86_poll(0);
 	}
@@ -3351,6 +3586,10 @@ void user_io_poll()
 					blksz = CDI_CDIC_BUFFER_SIZE;
 				else if (mac_cdda_window(disk, lba))
 					blksz = 2352;   // Mac CD-DA: one whole frame per transaction
+				else if (is_marty())
+					blksz = marty_block_size(disk, 128 << ((c >> 6) & 7));
+				else if (is_pcfx() && disk == PCFX_SLOT_CD)
+					blksz = PCFX_CD_BLOCK;
 				else
 					blksz = 128 << ((c >> 6) & 7);
 
@@ -3410,20 +3649,66 @@ void user_io_poll()
 			if ( sd_type[disk] == SD_TYPE_A2)
 			{
 				//if (op) printf("A2 %x %llu on %d\n", op,lba, disk);
-				if (op == 2) a2_writeDSK(&sd_image[disk], lba, ack);
-				else if (op & 1) a2_readDSK(&sd_image[disk], lba, ack);
+				if (op == 2) a2_writeDSK(&sd_image[disk], lba, ack, disk);
+				else if (op & 1) a2_readDSK(&sd_image[disk], lba, ack, disk);
 				else break;
 			}
 			else if ( sd_type[disk] == SD_TYPE_IIGS)
 			{
 				if (op == 2) iigs_write(disk, &sd_image[disk], lba, ack);
-				else if (op & 1) iigs_read(disk, &sd_image[disk], lba, ack);
+				else if (op & 1) iigs_read(disk, &sd_image[disk], lba, blks, ack);
 				else break;
 			}
-			else if (int macop = mac_sd_service(disk, op, lba, sz, ack))
+			else if (int macop = mac_sd_service(disk, &sd_image[disk], op, lba, sz, ack))
 			{
 				// Mac Toolbox/CD slots (support/mac); SPI is done by the hook.
 				if (macop < 0) break;
+			}
+			else if (int nxop = next_sd_service(disk, op, (uint32_t)lba, sz, ack))
+			{
+				if (nxop < 0) break;
+			}
+			else if (int sunop = sun_sd_service(disk, &sd_image[disk], op, lba, sz, ack))
+			{
+				// Sun disk write buffer and CD slot (support/sun); SPI is done by the hook.
+				if (sunop < 0) break;
+			}
+			else if (int hpop = hp9k_sd_service(disk, &sd_image[disk], op, lba, sz, ack))
+			{
+				if (hpop < 0) break;
+			}
+			else if (int rsop = ibmrs6k_sd_service(disk, &sd_image[disk], op, lba, sz, ack))
+			{
+				if (rsop < 0) break;
+			}
+			else if (int sgop = sgi_sd_service(disk, &sd_image[disk], op, lba, sz, ack))
+			{
+				if (sgop < 0) break;
+			}
+			else if (int mop = marty_sd_service(disk, op, (uint32_t)lba, sz, ack))
+			{
+				if (mop < 0) break;
+      }
+			else if (int pop = pcfx_sd_service(disk, op, (uint32_t)lba, sz, ack))
+			{
+				if (pop < 0) break;
+			}
+			else if (int a3op = a3_sd_service(disk, &sd_image[disk], op, lba, sz, ack))
+			{
+				if (a3op < 0) break;
+			}
+			else if (int pc88op = pc88_sd_service(disk, &sd_image[disk], op, lba, sz, ack))
+			{
+				if (pc88op < 0) break;
+			}
+			else if (int stop = st_fdd_sd_service(disk, op, lba, sz, ack))
+			{
+				if (stop < 0) break;
+			}
+			else if (int falop = falcon_sd_service(disk, op, lba, sz, ack))
+			{
+				// Falcon SCSI response windows / translated CD (support/falcon); SPI is done by the hook.
+				if (falop < 0) break;
 			}
 			else if ((blks == G64_BLOCK_COUNT_1541+1 || blks == G64_BLOCK_COUNT_1571+1) && sd_type[disk]==SD_TYPE_C64)
 			{
@@ -3679,7 +3964,6 @@ void user_io_poll()
 	}
 
 	if (is_archie()) archie_poll();
-	if (core_type == CORE_TYPE_SHARPMZ) sharpmz_poll();
 
 	static uint8_t leds = 0;
 
@@ -3962,6 +4246,9 @@ void user_io_poll()
 	if (is_megacd()) mcd_poll();
 	if (is_pce()) pcecd_poll();
 	if (is_saturn()) saturn_poll();
+	if (is_marty()) marty_poll();
+	if (is_videobrain()) videobrain_poll();
+	if (is_pcfx()) pcfx_poll();
 	if (is_cdi()) cdi_poll();
 	if (is_psx()) psx_poll();
 	if (is_neogeo_cd()) neocd_poll();
@@ -4198,29 +4485,6 @@ static void send_keycode(unsigned short key, int press)
 			DisableIO();
 		}
 	}
-
-	if (core_type == CORE_TYPE_SHARPMZ)
-	{
-		uint32_t code = get_ps2_code(key);
-		if (code == NONE) return;
-
-		{
-			if (press > 1 && !use_ps2ctl) return;
-
-			spi_uio_cmd_cont(UIO_KEYBOARD);
-
-			// prepend extended code flag if required
-			if (code & EXT) spi8(0xe0);
-
-			// prepend break code if required
-			if (!press) spi8(0xf0);
-
-			// send code itself
-			spi8(code & 0xff);
-
-			DisableIO();
-		}
-	}
 }
 
 void user_io_mouse(unsigned char b, int16_t x, int16_t y, int16_t w)
@@ -4359,8 +4623,11 @@ void user_io_check_reset(unsigned short modifiers, char useKeys)
 
 void user_io_osd_key_enable(char on)
 {
+	on = !!on;
 	//printf("OSD is now %s\n", on ? "visible" : "invisible");
+	if (osd_is_visible != on) input_analog_triggers_resync(on);
 	osd_is_visible = on;
+
 	if (cfg.log_file_entry) MakeFile("/tmp/OSD_VISIBLE", on ? "1" : "0");
 	input_switch(-1);
 }
